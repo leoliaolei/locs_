@@ -1,0 +1,11 @@
+{
+  "name": "njs-user",
+  "version": "0.1.0",
+  "description": "Basic user management including authentication",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}
