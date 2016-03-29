@@ -1,11 +1,15 @@
 {
-  "name": "los",
-  "version": "1.0.0",
-  "description": "Leo's Opinionated Nodejs Scarfolding",
-  "main": "gulpfile.js",
+  "name": "lons",
+  "version": "0.1.0",
+  "description": "Leo's Opinionated NodeJs Scaffolding",
+  "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
+  "dependencies": {
+    "bunyan": "^1.8.0",
+    "restify": "^4.0.4"
+  },
   "license": "ISC"
 }
