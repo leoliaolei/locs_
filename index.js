@@ -3,7 +3,7 @@
  */
 
 module.exports = {
-    app: require('./lons/njs-app/index'),
-    scs: require('./lons/njs-db/index'),
-    user: require('./lons/njs-user/index')
+    app: require('./src/njs-app/index'),
+    scs: require('./src/njs-db/index'),
+    user: require('./src/njs-user/index')
 };
