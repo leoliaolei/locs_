@@ -1,7 +1,7 @@
 {
   "name": "los",
   "version": "1.0.0",
-  "description": "Leo's Opinionated Scripts",
+  "description": "Leo's Opinionated Nodejs Scarfolding",
   "main": "gulpfile.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

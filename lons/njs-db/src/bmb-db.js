@@ -5,8 +5,8 @@ var _ = require('lodash');
 var async = require('async');
 var mongoose = require('mongoose');
 var Q = require("q");
-var bmb = require('./bmb-sci');
-var shortid = require('shortid');
+var sci = require('./bmb-sci');
+//var shortid = require('shortid');
 
 var logger = require('bunyan').createLogger({name: "bmb-db", level: 'debug'});
 
@@ -16,7 +16,7 @@ var logger = require('bunyan').createLogger({name: "bmb-db", level: 'debug'});
  * @private
  */
 function _updateLmt(entity) {
-    entity[bmb.EntityFields.LAST_MODIFIED] = bmb.utcTimestamp();
+    entity[sci.EntityFields.LAST_MODIFIED] = sci.utcTimestamp();
 }
 
 /**
@@ -29,20 +29,20 @@ function _updateLmt(entity) {
 function mongoModel(name, schema, includeSyncFields) {
     var fields = schema;
     if (includeSyncFields) {
-        fields[bmb.EntityFields.CLIENT_ID] = String;
-        fields[bmb.EntityFields.LAST_MODIFIED] = Number;
-        fields[bmb.EntityFields.ACCOUNT_ID] = String;
-        fields[bmb.EntityFields.STATUS] = String;
+        fields[sci.EntityFields.CLIENT_ID] = String;
+        fields[sci.EntityFields.LAST_MODIFIED] = Number;
+        fields[sci.EntityFields.ACCOUNT_ID] = String;
+        fields[sci.EntityFields.STATUS] = String;
     }
     return mongoose.model(name, mongoose.Schema(fields));
 }
 
 var AuditModel = mongoose.model('Audit', mongoose.Schema({
-    _id: {
-        type: String,
-        unique: true,
-        'default': shortid.generate
-    },
+    //_id: {
+    //    type: String,
+    //    unique: true,
+    //    'default': shortid.generate
+    //},
     action: {
         type: String,
         required: true
@@ -69,7 +69,7 @@ Auditor.prototype.log = function (action, entityType, entityId) {
     audit.action = action;
     audit.entity = entityType;
     audit.entityId = entityId;
-    audit.timestamp = bmb.utcTimestamp();
+    audit.timestamp = sci.utcTimestamp();
     audit.save();
 };
 
@@ -124,10 +124,10 @@ function EntityDao(model, modelPrototype) {
          */
         function toSyncResult(entity, extra) {
             var obj = {};
-            obj[bmb.EntityFields.CLIENT_ID] = entity[bmb.EntityFields.CLIENT_ID];
-            obj[bmb.EntityFields.ID] = entity[bmb.EntityFields.ID];
-            obj[bmb.EntityFields.STATUS] = entity[bmb.EntityFields.STATUS];
-            obj[bmb.EntityFields.LAST_MODIFIED] = entity[bmb.EntityFields.LAST_MODIFIED];
+            obj[sci.EntityFields.CLIENT_ID] = entity[sci.EntityFields.CLIENT_ID];
+            obj[sci.EntityFields.ID] = entity[sci.EntityFields.ID];
+            obj[sci.EntityFields.STATUS] = entity[sci.EntityFields.STATUS];
+            obj[sci.EntityFields.LAST_MODIFIED] = entity[sci.EntityFields.LAST_MODIFIED];
             if (extra)
                 obj.extra = extra;
             return obj;
@@ -146,17 +146,17 @@ function EntityDao(model, modelPrototype) {
          * @param currentIndex
          */
         function syncNewEntity(change, callback, currentIndex) {
-            change[bmb.EntityFields.CLIENT_ID] = change[bmb.EntityFields.ID];
-            delete change[bmb.EntityFields.ID];
+            change[sci.EntityFields.CLIENT_ID] = change[sci.EntityFields.ID];
+            delete change[sci.EntityFields.ID];
             var doc = new EntityModel(change);
-            doc[bmb.EntityFields.ACCOUNT_ID] = userId; // Assign user id
+            doc[sci.EntityFields.ACCOUNT_ID] = userId; // Assign user id
             //_updateLmt(doc);
             doc.save(function (err, doc) {
                 if (err) {
                     handleError(err);
                 } else {
-                    change[bmb.EntityFields.CLIENT_ID] = change[bmb.EntityFields.ID]; // Save old client ID
-                    change[bmb.EntityFields.ID] = doc._id; // Assign server generated ID
+                    change[sci.EntityFields.CLIENT_ID] = change[sci.EntityFields.ID]; // Save old client ID
+                    change[sci.EntityFields.ID] = doc._id; // Assign server generated ID
                     finalResult.created.push(toSyncResult(doc));
                 }
                 callback(null, finalResult, currentIndex + 1);
@@ -171,7 +171,7 @@ function EntityDao(model, modelPrototype) {
          * @param currentIndex {Number} used for sync call
          */
         function syncExistingEntity(doc, change, callback, currentIndex) {
-            if (change[bmb.EntityFields.LAST_MODIFIED] > doc[bmb.EntityFields.LAST_MODIFIED]) {
+            if (change[sci.EntityFields.LAST_MODIFIED] > doc[sci.EntityFields.LAST_MODIFIED]) {
                 _.assign(doc, change);
                 //_updateLmt(doc);
                 doc.save(function (err) {
@@ -185,18 +185,18 @@ function EntityDao(model, modelPrototype) {
             } else {
                 _rejectChange(change, {
                     msg: "EarlyLmt",
-                    server: doc[bmb.EntityFields.LAST_MODIFIED]
+                    server: doc[sci.EntityFields.LAST_MODIFIED]
                 }, callback, currentIndex);
             }
         }
 
         var callbackFunc = function (prevModelData, currentIndex, callback) {
             var change = changes[currentIndex];
-            var entityId = change[bmb.EntityFields.ID];
-            var status = change[bmb.EntityFields.STATUS];
+            var entityId = change[sci.EntityFields.ID];
+            var status = change[sci.EntityFields.STATUS];
             var isCid = isClientId(entityId);
             //logger.debug("callbackFunc", status, entityId, clientOnly);
-            if (status == bmb.EntityStatus.DELETED && !isCid) {
+            if (status == sci.EntityStatus.DELETED && !isCid) {
                 // Delete entity from server
                 EntityModel.remove({_id: entityId}, function (err) {
                     if (err) {
@@ -207,13 +207,13 @@ function EntityDao(model, modelPrototype) {
                     }
                     callback(null, finalResult, currentIndex + 1);
                 });
-            } else if (status != bmb.EntityStatus.DELETED && isCid) {
+            } else if (status != sci.EntityStatus.DELETED && isCid) {
                 // Entity with client type ID has two possibilities:
                 // 1. the entity is real NEW to server
                 // 2. the entity has been previously synced creation on server but failed syncing server ID back to client
                 // So we try to lookup and update server entity first. If not found then create a new one.
                 var q = {};
-                q[bmb.EntityFields.CLIENT_ID] = entityId;
+                q[sci.EntityFields.CLIENT_ID] = entityId;
                 EntityModel.findOne(q).exec(function (err, doc) {
                     if (err) {
                         handleError(err);
@@ -223,11 +223,11 @@ function EntityDao(model, modelPrototype) {
                         syncNewEntity(change, callback, currentIndex);
                     }
                 })
-            } else if (status != bmb.EntityStatus.DELETED && !isCid) {
+            } else if (status != sci.EntityStatus.DELETED && !isCid) {
                 // Entity with server type ID, try update it
                 var query = {};
-                query[bmb.EntityFields.ID] = entityId;
-                query[bmb.EntityFields.ACCOUNT_ID] = userId;
+                query[sci.EntityFields.ID] = entityId;
+                query[sci.EntityFields.ACCOUNT_ID] = userId;
                 // We look up existing entity by its id and owner to ensure that the creator is the passed in user.
                 EntityModel.findOne(query, function (err, doc) {
                     if (err) {
@@ -268,7 +268,7 @@ function EntityDao(model, modelPrototype) {
         var d = Q.defer();
         var result = {modified: [], deleted: []};
         var query = {};
-        query[bmb.EntityFields.LAST_MODIFIED] = {$gt: lmt};
+        query[sci.EntityFields.LAST_MODIFIED] = {$gt: lmt};
         EntityModel.find(query).select(fields).exec(function (err, records) {
             if (err) return d.reject(err);
             records.forEach(function (record) {
@@ -401,7 +401,7 @@ function EntityDao(model, modelPrototype) {
      */
     function updateEntity(entity) {
         var deferred = Q.defer();
-        EntityModel.findOne({_id: entity[bmb.EntityFields.ID]}, function (err, doc) {
+        EntityModel.findOne({_id: entity[sci.EntityFields.ID]}, function (err, doc) {
             if (err) {
                 return errorCallback(err);
             }

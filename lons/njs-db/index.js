@@ -10,6 +10,7 @@ var bmb = require('./src/bmb-sci');
 var db = require('./src/bmb-db');
 
 module.exports = {
+    sci: bmb,
     BaseModel: bmb.BaseModel,
     BaseEntityService: db.BaseEntityService
 };

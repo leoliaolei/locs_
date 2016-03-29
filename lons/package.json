@@ -1,11 +1,15 @@
 {
-  "name": "njs-app",
+  "name": "lons",
   "version": "0.1.0",
-  "description": "Very basic scarfolding for nodejs application with RESTful, logger and utils",
+  "description": "Leo's Opinionated NodeJs Scarfolding",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
+  "dependencies": {
+    "bunyan": "^1.8.0",
+    "restify": "^4.0.4"
+  },
   "license": "ISC"
 }
