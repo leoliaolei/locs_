@@ -374,7 +374,7 @@ function initRoutes(server) {
                  * An optional info argument will be passed, containing additional details provided by the strategy's verify callback.
                  * http://passportjs.org/docs/oauth2-api
                  */
-                function (err, user,info) {
+                function (err, user, info) {
                     // This code is called after Strategy verification function
                     if (err) {
                         console.error(err);
@@ -499,5 +499,6 @@ function initLogger(log) {
 module.exports = {
     initRoutes: initRoutes,
     initLogger: initLogger,
-    authService: authService
+    authService: authService,
+    guessSessionId: guessSessionId
 };
