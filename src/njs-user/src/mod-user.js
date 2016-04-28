@@ -19,8 +19,8 @@ var GOOGLE_OAUTH_OPTS = {
     //https://accounts.google.com/o/oauth2/auth?response_type=code&redirect_uri=http%3A%2F%2F127.0.0.1%3A7001%2Fapi%2F1.0%2Fauth%2Fgoogle%2Fcallback&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fplus.login&client_id=1020689494201-09gcvfq63pqs61uq6sjdugce6ot05ftb.apps.googleusercontent.com
     clientID: '1020689494201-09gcvfq63pqs61uq6sjdugce6ot05ftb.apps.googleusercontent.com',
     clientSecret: 'a62B2yM2feKQNpRS_or0ksLb',
-    //callbackURL: 'http://app.leoplay.com:7001/auth/google/callback'
-    callbackURL: 'http://127.0.0.1:7001/auth/google/callback'
+    callbackURL: 'http://app.leoplay.com:7001/auth/google/callback'
+    // callbackURL: 'http://127.0.0.1:7001/auth/google/callback'
 };
 var QQ_OAUTH_OPTS = {
     //authorizationURL: 'https://graph.z.qq.com/moc2/authorize',
