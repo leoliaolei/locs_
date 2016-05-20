@@ -13,7 +13,7 @@ var QqStrategy = require("passport-qq").Strategy;
 var GoogleStrategy = require('passport-google-oauth').OAuth2Strategy;
 var errors = require('restify').errors;
 var authService = new AuthService();
-var logger = console;
+var logger;
 
 var GOOGLE_OAUTH_OPTS = {
     //https://accounts.google.com/o/oauth2/auth?response_type=code&redirect_uri=http%3A%2F%2F127.0.0.1%3A7001%2Fapi%2F1.0%2Fauth%2Fgoogle%2Fcallback&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fplus.login&client_id=1020689494201-09gcvfq63pqs61uq6sjdugce6ot05ftb.apps.googleusercontent.com
@@ -69,7 +69,7 @@ var SessionModel = mongoose.model("Session", mongoose.Schema({
  * oauth: {provider_as_String:{openId:String}}
  * @type {mongoose.model}
  */
-var AccountModel = mongoose.model("Account", mongoose.Schema({
+var AccountModel = mongoose.model("Account", new mongoose.Schema({
     oauth: {},
     nickname: String,
     avatar: String,
@@ -146,7 +146,7 @@ function AuthService() {
 }
 
 /**
- * Create or update user session.
+ * Create or update user session info.
  * @param accountId {String} User account ID
  * @returns {Promise<String>} Session ID
  */
@@ -163,55 +163,58 @@ function updateSession(accountId) {
     return d.promise;
 }
 
+function isSuperAdmin(provider, openId) {
+    return (provider == "google" && openId == "104751654580011631723") ||
+        (provider == "qq" && openId == "94CE7A4A2B34A294D353BED03597618F");
+}
 /**
- * Let an OAuth authenticated user sign in application.
- * It will find or create account in database.
+ * Let an OAuth authenticated user sign in the application.
+ * It will create new account in dababase if this account not found in database.
  * @param provider {String} oauth provider
  * @param openId {String} oauth openId
  * @param account {Account} contains account information
  * @returns {Promise<SignInInfo>} sign in information
  */
 AuthService.prototype.loginUser = function (provider, openId, account) {
-    var condition = {};
-    condition["oauth." + provider + ".openId"] = openId;
-    //logger.debug({condition: condition, account: account}, "loginUser");
     var d = Q.defer();
-    AccountModel.findOne(condition).exec(function (err, rec) {
+    var query = {};
+    query["oauth." + provider + ".openId"] = openId;
+    AccountModel.findOne(query).exec(function (err, acc) {
         if (err) {
-            d.reject(err);
-        } else {
-            if (!rec) {
-                rec = new AccountModel(account);
-            }
-            // Update last sign in timestamp and admin role
-            // TODO: hard coded admin role
-            rec.lastSignin = Date.now();
-            if ((provider == "google" && openId == "104751654580011631723") ||
-                (provider == "qq" && openId == "94CE7A4A2B34A294D353BED03597618F")) {
-                if (rec.roles.indexOf("admin") < 0)
-                    rec.roles.push("admin");
-            }
-            if (!rec) {
-                //logger.info({account: rec}, "Create account");
-            }
-            rec.save(function (err, updated) {
-                if (err)
-                    d.reject(err);
-                else {
-                    updateSession(updated._id).then(function (sid) {
-                        var sii = new SignInInfo();
-                        sii.sid = sid;
-                        sii.roles = rec.roles;
-                        sii.nickname = account.nickname;
-                        sii.avatar = account.avatar;
-                        sii.hasLogin = provider;
-                        d.resolve(sii);
-                    }).catch(function (err) {
-                        d.reject(err);
-                    })
-                }
-            });
+            return d.reject(err);
         }
+        // else {
+        if (!acc) {
+            acc = new AccountModel(account);
+            //TODO: strange! without explicit _id assignment it will throw exception of "document must have an _id before saving"
+            acc._id = new mongoose.Types.ObjectId;
+            logger && logger.info({account: acc}, "loginUser:new_account");
+        }
+        // Update last sign in timestamp and admin role
+        acc.lastSignin = Date.now();
+        if (isSuperAdmin(provider, openId) && acc.roles.indexOf("admin") < 0) {
+            acc.roles.push("admin");
+        }
+        // logger && logger.debug({account: acc}, "loginUser");
+        acc.save(function (err) {
+            if (err) {
+                return d.reject(err);
+            }
+            // else {
+            updateSession(acc._id).then(function (sid) {
+                var sii = new SignInInfo();
+                sii.sid = sid;
+                sii.roles = acc.roles;
+                sii.nickname = account.nickname;
+                sii.avatar = account.avatar;
+                sii.hasLogin = provider;
+                d.resolve(sii);
+            }).catch(function (err) {
+                d.reject(err);
+            })
+            // }
+        });
+        // }
     });
     return d.promise;
 };
