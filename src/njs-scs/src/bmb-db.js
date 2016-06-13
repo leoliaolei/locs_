@@ -32,7 +32,7 @@ function mongoModel(name, schema, includeSyncFields) {
         fields[sci.EntityFields.CLIENT_ID] = String;
         fields[sci.EntityFields.LAST_MODIFIED] = Number;
         fields[sci.EntityFields.ACCOUNT_ID] = String;
-        fields[sci.EntityFields.STATUS] = String;
+        fields[sci.EntityFields.STATUS] = Number;
     }
     return mongoose.model(name, mongoose.Schema(fields));
 }
@@ -98,11 +98,6 @@ function EntityDao(model, modelPrototype) {
     function saveClientChanges(userId, changes, options) {
         var d = Q.defer();
         var finalResult = {deleted: [], created: [], updated: [], rejected: []};
-        var queue = [
-            function (callback) {
-                callback(null, changes, 0);
-            }
-        ];
         options = options || {forceCreationIfNotFound: false};
 
         /**
@@ -119,47 +114,43 @@ function EntityDao(model, modelPrototype) {
         /**
          * Put selected key properties from an entity for result response.
          * @param entity {*} Entity
-         * @param extra {*=} Extra information saved in property `extra`
+         * @param code {*=} optional code to identify extra info like error reason
          * @returns {{}}
          */
-        function toSyncResult(entity, extra) {
+        function toSyncResult(entity, code) {
             var obj = {};
             obj[sci.EntityFields.CLIENT_ID] = entity[sci.EntityFields.CLIENT_ID];
             obj[sci.EntityFields.ID] = entity[sci.EntityFields.ID];
             obj[sci.EntityFields.STATUS] = entity[sci.EntityFields.STATUS];
             obj[sci.EntityFields.LAST_MODIFIED] = entity[sci.EntityFields.LAST_MODIFIED];
-            if (extra)
-                obj.extra = extra;
+            if (code)
+                obj.code = code;
             return obj;
         }
 
-        function _rejectChange(entity, reason, callback, currentIndex) {
-            var obj = toSyncResult(entity, reason);
-            finalResult.rejected.push(obj);
-            callback(null, finalResult, currentIndex + 1);
+        function _rejectChange(entity, code) {
+            finalResult.rejected.push(toSyncResult(entity, code));
         }
 
         /**
          * Create new entities from client changes
          * @param change
-         * @param callback
-         * @param currentIndex
+         * @param callback {function(Error)}
          */
-        function syncNewEntity(change, callback, currentIndex) {
-            change[sci.EntityFields.CLIENT_ID] = change[sci.EntityFields.ID];
-            delete change[sci.EntityFields.ID];
-            var doc = new EntityModel(change);
+        function _createFromClient(change, callback) {
+            var doc = {};
+            _.assign(doc,change);
+            doc[sci.EntityFields.CLIENT_ID] = doc[sci.EntityFields.ID];
+            delete doc[sci.EntityFields.ID];
+            doc = new EntityModel(doc);
             doc[sci.EntityFields.ACCOUNT_ID] = userId; // Assign user id
-            //_updateLmt(doc);
             doc.save(function (err, doc) {
                 if (err) {
-                    handleError(err);
-                } else {
-                    change[sci.EntityFields.CLIENT_ID] = change[sci.EntityFields.ID]; // Save old client ID
-                    change[sci.EntityFields.ID] = doc._id; // Assign server generated ID
-                    finalResult.created.push(toSyncResult(doc));
+                    return callback(err);
                 }
-                callback(null, finalResult, currentIndex + 1);
+                change[sci.EntityFields.ID] = doc._id; // Assign server generated ID
+                finalResult.created.push(toSyncResult(doc.toObject()));
+                callback();
             });
         }
 
@@ -167,63 +158,65 @@ function EntityDao(model, modelPrototype) {
          * Update existing entities from client changes
          * @param doc {*} db entity
          * @param change {*} changed entity
-         * @param callback {Function} used for sync call
-         * @param currentIndex {Number} used for sync call
+         * @param callback {Function(Error)} used for sync call
          */
-        function syncExistingEntity(doc, change, callback, currentIndex) {
+        function _updateFromClient(doc, change, callback) {
             if (change[sci.EntityFields.LAST_MODIFIED] > doc[sci.EntityFields.LAST_MODIFIED]) {
                 _.assign(doc, change);
                 //_updateLmt(doc);
                 doc.save(function (err) {
                     if (err) {
-                        handleError(err);
-                    } else {
-                        finalResult.updated.push(toSyncResult(change));
+                        return callback(err);
                     }
-                    callback(null, finalResult, currentIndex + 1);
+                    finalResult.updated.push(toSyncResult(change));
+                    callback();
                 });
             } else {
-                _rejectChange(change, {
-                    msg: "EarlyLmt",
-                    server: doc[sci.EntityFields.LAST_MODIFIED]
-                }, callback, currentIndex);
+                _rejectChange(change, "SeverChangedAfterClient", {
+                        server: doc[sci.EntityFields.LAST_MODIFIED]
+                    }
+                );
+                callback();
             }
         }
 
-        var callbackFunc = function (prevModelData, currentIndex, callback) {
-            var change = changes[currentIndex];
+        async.each(changes, function (change, callback) {
             var entityId = change[sci.EntityFields.ID];
             var status = change[sci.EntityFields.STATUS];
             var isCid = isClientId(entityId);
             //logger.debug("callbackFunc", status, entityId, clientOnly);
-            if (status == sci.EntityStatus.DELETED && !isCid) {
-                // Delete entity from server
-                EntityModel.remove({_id: entityId}, function (err) {
-                    if (err) {
-                        handleError(err);
-                    } else {
+            if (status == sci.EntityStatus.DELETED) {
+                if (!isCid) {
+                    // Delete entity from server
+                    EntityModel.remove({_id: entityId}, function (err) {
+                        if (err) {
+                            return callback(err);
+                        }
                         finalResult.deleted.push({_id: entityId});
                         auditor.log("delete", EntityModel.modelName, entityId);
-                    }
-                    callback(null, finalResult, currentIndex + 1);
-                });
-            } else if (status != sci.EntityStatus.DELETED && isCid) {
+                        callback();
+                    });
+                } else {
+                    _rejectChange(change, "DeletedEntityIsClientOnly");
+                    callback();
+                }
+            } else if (isCid) {
                 // Entity with client type ID has two possibilities:
-                // 1. the entity is real NEW to server
+                // 1. the entity is really NEW to server
                 // 2. the entity has been previously synced creation on server but failed syncing server ID back to client
                 // So we try to lookup and update server entity first. If not found then create a new one.
                 var q = {};
                 q[sci.EntityFields.CLIENT_ID] = entityId;
                 EntityModel.findOne(q).exec(function (err, doc) {
                     if (err) {
-                        handleError(err);
+                        callback(err);
                     } else if (doc) {
-                        syncExistingEntity(doc, change, callback, currentIndex);
+                        _updateFromClient(doc, change, callback);
                     } else {
-                        syncNewEntity(change, callback, currentIndex);
+                        _createFromClient(change, callback);
                     }
                 })
-            } else if (status != sci.EntityStatus.DELETED && !isCid) {
+            } else {
                 // Entity with server type ID, try update it
                 var query = {};
                 query[sci.EntityFields.ID] = entityId;
@@ -231,27 +224,21 @@ function EntityDao(model, modelPrototype) {
                 // We look up existing entity by its id and owner to ensure that the creator is the passed in user.
                 EntityModel.findOne(query, function (err, doc) {
                     if (err) {
-                        handleError(err);
+                        return callback(err);
                     } else if (doc) {
-                        syncExistingEntity(doc, change, callback, currentIndex);
+                        _updateFromClient(doc, change, callback);
                     } else {
                         if (options.forceCreationIfNotFound) {
-                            syncNewEntity(change, callback, currentIndex);
+                            _createFromClient(change, callback);
                         } else {
                             // The entity may have been deleted from server so we cannot find it
-                            _rejectChange(change, "ModifiedEntityNotFound", callback, currentIndex);
+                            _rejectChange(change, "ModifiedEntityNotFound");
+                            callback();
                         }
                     }
                 });
-            } else {
-                _rejectChange(change, "InconsistentStatus", callback, currentIndex);
             }
-        };
-        _.forEach(changes, function () {
-            queue.push(callbackFunc);
-        });
-
-        async.waterfall(queue, function (err, result) {
+        }, function (err) {
             if (err) return d.reject(err);
             d.resolve(finalResult);
         });
@@ -260,23 +247,32 @@ function EntityDao(model, modelPrototype) {
 
     /**
      * Find changes on server side.
-     * @param lmt {Date}
+     * @param lmt {Number} as Date
      * @param fields
      * @return {Q<{modified:[Object],deleted:[{_id:String,timestamp:Number}]}>}
      */
     function findServerChanges(lmt, fields) {
         var d = Q.defer();
         var result = {modified: [], deleted: []};
-        var query = {};
-        query[sci.EntityFields.LAST_MODIFIED] = {$gt: lmt};
-        EntityModel.find(query).select(fields).exec(function (err, records) {
-            if (err) return d.reject(err);
+        var queryAfterLmt = {};
+        if (lmt) {
+            queryAfterLmt[sci.EntityFields.LAST_MODIFIED] = {$gt: Number.parseInt(lmt)};
+        }
+        EntityModel.find(queryAfterLmt).select(fields).exec(function (err, records) {
+            if (err) {
+                return d.reject(err);
+            }
             records.forEach(function (record) {
                 result.modified.push(record.toObject());
             });
-            var criteria = {action: "delete", entity: EntityModel.modelName, timestamp: {$gt: lmt}};
-            AuditModel.find(criteria).exec(function (err, docs) {
-                if (err) return d.reject(err);
+            var queryDeleted = {action: "delete", entity: EntityModel.modelName};
+            if (lmt) {
+                queryDeleted.timestamp = {$gt: lmt};
+            }
+            AuditModel.find(queryDeleted).exec(function (err, docs) {
+                if (err) {
+                    return d.reject(err);
+                }
                 docs.forEach(function (doc) {
                     var obj = {_id: doc.entityId, timestamp: doc.timestamp};
                     result.deleted.push(obj);

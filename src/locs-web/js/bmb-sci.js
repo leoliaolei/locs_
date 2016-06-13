@@ -114,9 +114,11 @@
         /**
          * Convert time in GMT 0 timezone to local timezone.
          * @param gmtMilSec {Number} Mil seconds in GMT 0 timezone
-         * @return {Date} Date in local timezone
+         * @return {Date|undefined} Date in local timezone
          */
         gmtToLocalTime: function (gmtMilSec) {
+            if (typeof gmtMilSec == "undefined")
+                return gmtMilSec;
             var offset = new Date().getTimezoneOffset() * 60 * 1000;
             return new Date(gmtMilSec - offset);
         }
