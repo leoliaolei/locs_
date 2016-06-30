@@ -13,8 +13,17 @@ const GoogleStrategy = require('passport-google-oauth').OAuth2Strategy;
 const errors = require('restify').errors;
 var authService = new AuthService();
 var logger = console;
-
 var oauthProviders = {};
+/**
+ * Save global chrome extension ids
+ * @type {Array}
+ */
+var chromeIds = [];
+/**
+ * Valid for 30 days
+ * @type {number} Session timeout in millis
+ */
+var SESSION_TIMEOUT = 30 * 24 * 60 * 60 * 1000;
 
 
 /**
@@ -30,33 +39,19 @@ var guessSessionId = function (request) {
 };
 
 /**
- *
- * @param uid {String} User ID
+ * User session
  * @constructor
  */
-var Session = function (uid) {
-    /**
-     * User ID
-     * @type {String}
-     */
-    this.uid = uid;
-    /**
-     * Valid for 30 days
-     * @type {number} Session timeout in millis
-     */
-    this.timeout = Date.now() + 30 * 24 * 60 * 60 * 1000;
-};
-
-var SessionModel = mongoose.model("Session", mongoose.Schema({
+var Session = mongoose.model("Session", mongoose.Schema({
     timeout: Number,
     uid: String
 }));
 
 /**
  * oauth: {provider_as_String:{openId:String}}
- * @type {mongoose.model}
+ * @constructor
  */
-var AccountModel = mongoose.model("Account", mongoose.Schema({
+var Account = mongoose.model("Account", mongoose.Schema({
     oauth: {},
     nickname: String,
     avatar: String,
@@ -66,7 +61,7 @@ var AccountModel = mongoose.model("Account", mongoose.Schema({
 }));
 
 /**
- * User sign in result
+ * User sign-in info sent back to client.
  * @constructor
  */
 var SignInInfo = function () {
@@ -98,12 +93,13 @@ var SignInInfo = function () {
 };
 
 /**
- * User account
+ * User account information
  * @constructor
+ * @private
  */
-var Account = function () {
-    this.__status = undefined;
-    this.__lmt = undefined;
+var _Account = function () {
+    // this.__status = undefined;
+    // this.__lmt = undefined;
     /**
      * OAuth information
      * @type {{}} {provider_as_String:{openId:String}}
@@ -120,12 +116,8 @@ var Account = function () {
      * @type {String}
      */
     this.avatar = undefined;
-    /**
-     *
-     * @type {String}
-     */
-    this.kindleEmail = undefined;
-    this.createdAt = Date.now();
+
+    // this.createdAt = Date.now();
 };
 
 
@@ -139,13 +131,14 @@ function AuthService() {
 /**
  * Create or update user session.
  * @param accountId {String} User account ID
- * @returns {Promise<String>} Session ID
+ * @returns {Q<String>} Session ID
  */
 function updateSession(accountId) {
     var d = Q.defer();
-    var session = new Session(accountId);
-    var model = new SessionModel(session);
-    model.save(function (err, doc) {
+    var session = new Session();
+    session.uid = accountId;
+    session.timeout = Date.now() + SESSION_TIMEOUT;
+    session.save(function (err, doc) {
         if (err)
             d.reject(err);
         else
@@ -159,20 +152,21 @@ function updateSession(accountId) {
  * It will find or create account in database.
  * @param provider {String} oauth provider
  * @param openId {String} oauth openId
- * @param account {Account} contains account information
- * @returns {Promise<SignInInfo>} sign in information
+ * @param account {{oauth:{},nickname:string,avatar:string}} account information
+ * @returns {Q<SignInInfo>} sign in information
  */
 AuthService.prototype.loginUser = function (provider, openId, account) {
     var condition = {};
     condition["oauth." + provider + ".openId"] = openId;
     //logger.debug({condition: condition, account: account}, "loginUser");
     var d = Q.defer();
-    AccountModel.findOne(condition).exec(function (err, rec) {
+    Account.findOne(condition).exec(function (err, rec) {
         if (err) {
             d.reject(err);
         } else {
             if (!rec) {
-                rec = new AccountModel(account);
+                rec = new Account(account);
+                rec.createdAt = Date.now();
             }
             // Update last sign in timestamp and admin role
             rec.lastSignin = Date.now();
@@ -212,7 +206,7 @@ AuthService.prototype.loginUser = function (provider, openId, account) {
  * Determine if a session has admin privilege.
  * @param sid {String} Session ID
  * @param assertive {boolean=} true to throw exception if has no admin role
- * @return {promise<boolean>} the value is always true if assertive==true
+ * @return {Q<boolean>} the value is always true if assertive==true
  */
 AuthService.prototype.hasAdminRole = function (sid, assertive) {
     var d = Q.defer();
@@ -247,7 +241,7 @@ AuthService.prototype.checkSession = function (sid, renew) {
  * Find session bundled account id
  * @param sid {String} session id
  * @param assertive {boolean=} true to throw error if account not found
- * @returns {Promise<String|Error>} account id, null if not found. Error if db error.
+ * @returns {Q<String|Error>} account id, null if not found. Error if db error.
  * @throws {HttpError} if argument <tt>assertive</tt> is true and no account is found
  */
 AuthService.prototype.findAccountIdBySession = function (sid, assertive) {
@@ -259,7 +253,7 @@ AuthService.prototype.findAccountIdBySession = function (sid, assertive) {
         else
             d.resolve(null);
     } else {
-        SessionModel.findOne({_id: sid}, function (err, session) {
+        Session.findOne({_id: sid}, function (err, session) {
             if (err) {
                 d.reject(err);
             } else {
@@ -281,14 +275,14 @@ AuthService.prototype.findAccountIdBySession = function (sid, assertive) {
  * Find session bundled account
  * @param sid {String} session id
  * @param assertive {boolean=} true to throw error if account not found
- * @returns {Promise<AccountModel|Error>} account, null if not found. Error if db error.
+ * @returns {Q<Account|Error>} account, null if not found. Error if db error.
  * @throws {HttpError} if argument <tt>assertive</tt> is true and no account is found
  */
 AuthService.prototype.findAccountBySession = function (sid, assertive) {
     var d = Q.defer();
     this.findAccountIdBySession(sid, assertive).then(function (uid) {
         if (uid) {
-            AccountModel.findOne({_id: uid}).exec(function (err, account) {
+            Account.findOne({_id: uid}).exec(function (err, account) {
                 if (err) {
                     d.reject(err);
                 } else {
@@ -318,55 +312,95 @@ function initRoutes(server, config) {
     _configInterceptor(server);
     _routeAccount(server);
     _routeAuth(server);
+    var isDebugAuth = true;
 
     function _routeAccount(server) {
-        server.get("/api/1.0/my/profile",
-            function _getMyProfile(req, res, next) {
-                var sid = guessSessionId(req);
-                authService.findAccountBySession(sid).then(function (account) {
-                    res.send({profile: account});
-                }).catch(function (err) {
-                    res.send(err);
-                });
+        server.get("/api/1.0/my/profile", _getMyProfile);
+        server.get("/api/my/profile", _getMyProfile);
+        function _getMyProfile(req, res, next) {
+            var sid = guessSessionId(req);
+            authService.findAccountBySession(sid).then(function (account) {
+                res.send({profile: account});
+            }).catch(function (err) {
+                res.send(err);
             });
+        }
 
-        server.get("/api/1.0/admin/accounts",
-            function _listAccounts(req, res, next) {
-                AccountModel.find().select("-oauth.qq.accessToken -oauth.qq.refreshToken -oauth.google.accessToken -__v").exec(function (err, docs) {
-                    res.send(err ? err : docs);
-                    next();
-                });
+
+        server.get("/api/1.0/admin/accounts", _listAccounts);
+        server.get("/api/admin/accounts", _listAccounts);
+        function _listAccounts(req, res, next) {
+            Account.find().select("-oauth.qq.accessToken -oauth.qq.refreshToken -oauth.google.accessToken -__v").exec(function (err, docs) {
+                res.send(err ? err : docs);
+                next();
             });
-        server.del("/api/1.0/admin/accounts/:uid",
-            function _deleteAccount(req, res, next) {
-                var uid = req.params.uid;
-                //logger.debug({uid: uid}, "_deleteAccount");
-                AccountModel.remove({_id: uid}).exec(function (err, numberRemoved) {
-                    res.send(err ? err : {numberRemoved: numberRemoved});
-                    next();
-                });
+        }
+
+        server.del("/api/1.0/admin/accounts/:uid", _deleteAccount);
+        server.del("/api/admin/accounts/:uid", _deleteAccount);
+        function _deleteAccount(req, res, next) {
+            var uid = req.params.uid;
+            //logger.debug({uid: uid}, "_deleteAccount");
+            Account.remove({_id: uid}).exec(function (err, numberRemoved) {
+                res.send(err ? err : {numberRemoved: numberRemoved});
+                next();
             });
+        }
     }
 
     function _routeAuth(server) {
-        //https://accounts.google.com/o/oauth2/auth?response_type=code&redirect_uri=http%3A%2F%2Fapp.leoplay.com%3A7001%2Fauth%2Fgoogle%2Fcallback&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fplus.login&client_id=1020689494201-09gcvfq63pqs61uq6sjdugce6ot05ftb.apps.googleusercontent.com
-        server.get('/auth/google', passport.authenticate('google', {
-                scope: ['https://www.googleapis.com/auth/plus.login']
-            }
-        ));
-        //https://graph.qq.com/oauth2.0/authorize?response_type=code&redirect_uri=http%3A%2F%2Fapp.leoplay.com%2Fstk%2Fqq-auth-callback.php&client_id=101208573
-        server.get('/auth/qq', passport.authenticate('qq'));
+        var config = oauthProviders["google"];
+        if (config) {
+            passport.use(new GoogleStrategy(config,
+                function (accessToken, refreshToken, profile, done) {
+                    return _processPassport(accessToken, refreshToken, profile, done);
+                }
+            ));
+        }
+        // passport.use(new QqStrategy(oauthProviders["qq"],
+        //     function (accessToken, refreshToken, profile, done) {
+        //         return _processPassport(accessToken, refreshToken, profile, done);
+        //     }
+        // ));
 
+        server.get('/auth/:provider', _authWithProvider);
+        /**
+         * Submit auth to provider
+         * @private
+         */
+        function _authWithProvider(req, res, next) {
+            var provider = req.params.provider;
+            var xcid = req.params["x-chromeId"];
+            isDebugAuth = !!req.params["x-debug"];
+            // Save chrome id, we need the id to send message back
+            if (chromeIds && chromeIds.indexOf(xcid) < 0) {
+                chromeIds.push(xcid);
+            }
+            if (provider == "google") {
+                //https://accounts.google.com/o/oauth2/auth?response_type=code&redirect_uri=http%3A%2F%2Fapp.leoplay.com%3A7001%2Fauth%2Fgoogle%2Fcallback&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fplus.login&client_id=1020689494201-09gcvfq63pqs61uq6sjdugce6ot05ftb.apps.googleusercontent.com
+                passport.authenticate('google', {
+                        scope: ['https://www.googleapis.com/auth/plus.login']
+                    }
+                )(req, res, next);
+            } else if (provider == "qq") {
+                //https://graph.qq.com/oauth2.0/authorize?response_type=code&redirect_uri=http%3A%2F%2Fapp.leoplay.com%2Fstk%2Fqq-auth-callback.php&client_id=101208573
+                passport.authenticate('qq')(req, res, next);
+            } else {
+                next(new Error("Not implemented oauth provider '" + provider + "'"));
+            }
+        }
+
+        server.get('/auth/:provider/callback', _oauthCallback);
         /**
          * GET /auth/:provider/callback
+         * Callback invoked by oauth provider.
          * This URL will be redirected as query parameter by auth provider.
          * @param req query contains parameter of code generated by QQ, like `code=895D42795764E0E0F2B47D18B901B14A`
          * @param res Content type of "text/html; charset=utf-8", content is javascript passing <tt>window.$$$$authResult</tt>.
          * It is a javascript object generated by <tt>Account.toClient()</tt>.
          */
-        server.get('/auth/:provider/callback', function _oauthCallback(req, res, next) {
+        function _oauthCallback(req, res, next) {
             var provider = req.params.provider;
-            logger.debug({req: req}, "/auth/:provider/callback");
             passport.authenticate(provider,
                 /**
                  * If authentication failed, user will be set to false.
@@ -380,16 +414,21 @@ function initRoutes(server, config) {
                         logger.error(err);
                         return next(err);
                     } else {
-                        var str = JSON.stringify(user);
+                        var strUser = JSON.stringify(user);
+                        var strCrxIds = JSON.stringify(chromeIds);
+                        var closeWindow = !isDebugAuth;
                         // Do NOT change the name of $$$$authResult, it will be called in client InAppViewer's "loadstop" event
                         var body = '<script>' +
-                            'var $$$$authResult=' + str + ';' +
+                            'var $$$$authResult=' + strUser + ';' +
+                            (isDebugAuth ? 'console.log($$$$authResult);' : '') +
                             'var _caller=window.opener||window.top;' +
                             '_caller.postMessage($$$$authResult,"*");' +
                             'if (window.chrome && window.chrome.runtime) {' +
-                            'var extIds=["ikphkfkemdlgpgkhkpejlkecfddaohki","imobnhhigdfbbbmihfmdaajiehfifhba"];' +
+                            /* 'var extIds=["ikphkfkemdlgpgkhkpejlkecfddaohki","imobnhhigdfbbbmihfmdaajiehfifhba"];' +*/
+                            'var extIds=' + strCrxIds + ';' +
                             'extIds.forEach(function(extId){' +
-                            'chrome.runtime.sendMessage(extId, {code: "MSG_OAUTH_RESULT",authResult:$$$$authResult}, function () {window.close();});' +
+                            'console.log("Send message to chrome "+extId);' +
+                            'chrome.runtime.sendMessage(extId, {code: "MSG_OAUTH_RESULT",authResult:$$$$authResult}, function () {' + (closeWindow ? 'window.close();' : '') + '});' +
                             '});}' +
                             'console.log("DONE");' +
                             '</script>';
@@ -403,24 +442,11 @@ function initRoutes(server, config) {
                         //logger.debug({response: body}, "oauthCallback");
                     }
                 })(req, res, next);
-        });
-
-        var config = oauthProviders["google"];
-        if (config)
-            passport.use(new GoogleStrategy(config,
-                function (accessToken, refreshToken, profile, done) {
-                    return _processPassport(accessToken, refreshToken, profile, done);
-                }
-            ));
-        // passport.use(new QqStrategy(oauthProviders["qq"],
-        //     function (accessToken, refreshToken, profile, done) {
-        //         return _processPassport(accessToken, refreshToken, profile, done);
-        //     }
-        // ));
+        }
 
 
         /**
-         * This method is called after getting request of callbackURL
+         * Process provider returned user information after successful authentication
          * @param accessToken
          * @param refreshToken
          * @param profile
@@ -429,7 +455,6 @@ function initRoutes(server, config) {
          */
         function _processPassport(accessToken, refreshToken, profile, done) {
             var provider = profile.provider;
-            //logger.debug({profile: profile}, "_processPassport");
             var prof = {
                 openId: profile.id,
                 nickname: "",
@@ -448,25 +473,23 @@ function initRoutes(server, config) {
                 throw new Error("OAuth provider " + provider + " is not implemented");
             }
 
-            var account = new Account();
+            var account = {oauth: {}, nickname: prof.nickname, avatar: prof.avatar};
             account.oauth[provider] = {openId: profile.id, accessToken: accessToken, refreshToken: refreshToken};
-            account.nickname = prof.nickname;
-            account.avatar = prof.avatar;
-            account.createdAt = Date.now();
 
-            // Since 0.8.2, return result is {sii} and {account} is deprecated
-            authService.loginUser(provider, profile.id, account).then(function (sii) {
-                return done(null, {
-                    sii: sii,
-                    account: {
-                        nickname: sii.nickname,
-                        avatar: sii.avatar,
-                        hasLogin: sii.hasLogin,
-                        sid: sii.sid,
-                        roles: sii.roles
-                    }
-                });
-            }).catch(function (err) {
+            // Since stk 0.8.2, return result is {sii} and {account} is deprecated
+            authService.loginUser(provider, profile.id, account)
+                .then(function (sii) {
+                    return done(null, {
+                        sii: sii,
+                        account: {
+                            nickname: sii.nickname,
+                            avatar: sii.avatar,
+                            hasLogin: sii.hasLogin,
+                            sid: sii.sid,
+                            roles: sii.roles
+                        }
+                    });
+                }).catch(function (err) {
                 return done(err);
             });
         }
@@ -481,7 +504,7 @@ function initRoutes(server, config) {
         //logger.debug(server,"setupInterceptor");
         server.use(function _interceptAdmin(req, res, next) {
             var url = req.url;
-            if (url.indexOf("/api/1.0/admin") >= 0) {
+            if (url.indexOf("/api/1.0/admin") >= 0 || url.indexOf("/api/admin") >= 0) {
                 authService.hasAdminRole(guessSessionId(req), true).then(function (isAdmin) {
                     next();
                 }).catch(function (err) {

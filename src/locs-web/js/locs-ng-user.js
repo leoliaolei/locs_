@@ -299,7 +299,9 @@
                     return;
                 }
                 if (locsEnvUtils.isChromeExtension()) {
-                    authUrl += "?chromeId=" + chrome.runtime.id;
+                    //TODO: does not work
+                    authUrl += "?x-chromeId=" + chrome.runtime.id;
+                } else {
                 }
                 console.debug(authUrl, "OauthCtrl");
                 if (provider == "google") {

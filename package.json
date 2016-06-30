@@ -1,7 +1,7 @@
 {
   "name": "lons",
-  "version": "0.1.0",
-  "description": "Leo's Opinionated NodeJs Scaffolding",
+  "version": "0.1.1",
+  "description": "Leo's Opinionated Code Snippets",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
