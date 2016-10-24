@@ -21,6 +21,7 @@ function startServer(appName, port, logger) {
     if (!port) {
         throw new TypeError("Require parameter port in startServer(appName,port,logger)");
     }
+    restify.CORS.ALLOW_HEADERS.push('x-requested-with');
     restify.CORS.ALLOW_HEADERS.push('authorization');
     server = restify.createServer({name: appName, log: logger});
     server.listen(port, function () {

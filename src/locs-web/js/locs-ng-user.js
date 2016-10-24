@@ -45,6 +45,7 @@
      * @ngdoc service
      * @name locsEnvUtils
      * @description Environment utilities
+     * TODO:move to other file
      */
     mod.service('locsEnvUtils', [function locsEnvUtils() {
         var that = this;
@@ -67,14 +68,17 @@
             if (that.isAndroidApp()) {
                 if (!cordova.plugins)
                     return alert("Program Error: Cannot find cordova.plugins");
-                return cordova.plugins.clipboard
+                return cordova.plugins.clipboard;
             } else {
                 return {
                     copy: function (text, onSuccess, onFail) {
                         alert("Not implemented");
                     },
                     paste: function (onSuccess, onFail) {
-                        onSuccess && onSuccess("Fake clipboard");
+                        var s;
+                        s = "A mock clipboard content for browser: " + new Date().toISOString();
+                        // s = "isa mock clipboard content for browser: ";
+                        onSuccess && onSuccess(s);
                     },
                     hasText: function (onSuccess, onFail) {
                         onSuccess && onSuccess(true);
@@ -105,6 +109,13 @@
          */
         this.isAndroidApp = function () {
             return window.location.href.indexOf("file:///android_asset") == 0;
+        };
+
+        /**
+         * If this is a development mode.
+         */
+        this.isDevMode = function () {
+            return window.location.href.indexOf("?devmode") > 0;
         };
 
         /**
