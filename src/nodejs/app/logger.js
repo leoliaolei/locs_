@@ -1,5 +1,5 @@
 /*!
- * Basic logger.
+ * Basic logger implemented with bunyan.
  * Created by liaol on 2016/03/27.
  */
 
@@ -9,8 +9,8 @@ var bunyan = require('bunyan');
 
 /**
  * Create main logger
- * @param logName {String}
- * @param logDir {String}
+ * @param logName {String} Name of logger
+ * @param logDir {String} Directory to save log files
  * @returns {{info:function,error:function,warn:function,debug:function,childLogger:function}} a bunyan logger
  */
 function createLogger(logName, logDir) {

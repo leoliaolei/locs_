@@ -1,14 +1,14 @@
 /*!
- * Server side API.
+ * Database operation with mongoose.
  */
+
 var _ = require('lodash');
 var async = require('async');
 var mongoose = require('mongoose');
 var Q = require("q");
 var sci = require('./bmb-sci');
-//var shortid = require('shortid');
 
-var logger = require('bunyan').createLogger({name: "bmb-db", level: 'debug'});
+var logger = require('bunyan').createLogger({name: "mongo", level: 'debug'});
 
 /**
  * Update entity's last modified time to current timestamp
@@ -139,7 +139,7 @@ function EntityDao(model, modelPrototype) {
          */
         function _createFromClient(change, callback) {
             var doc = {};
-            _.assign(doc,change);
+            _.assign(doc, change);
             doc[sci.EntityFields.CLIENT_ID] = doc[sci.EntityFields.ID];
             delete doc[sci.EntityFields.ID];
             doc = new EntityModel(doc);

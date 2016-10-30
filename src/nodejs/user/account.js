@@ -15,21 +15,6 @@ var errors = require('restify').errors;
 var authService = new AuthService();
 var logger;
 
-var GOOGLE_OAUTH_OPTS = {
-    //https://accounts.google.com/o/oauth2/auth?response_type=code&redirect_uri=http%3A%2F%2F127.0.0.1%3A7001%2Fapi%2F1.0%2Fauth%2Fgoogle%2Fcallback&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fplus.login&client_id=1020689494201-09gcvfq63pqs61uq6sjdugce6ot05ftb.apps.googleusercontent.com
-    clientID: '1020689494201-09gcvfq63pqs61uq6sjdugce6ot05ftb.apps.googleusercontent.com',
-    clientSecret: 'a62B2yM2feKQNpRS_or0ksLb',
-    callbackURL: 'http://app.leoplay.com:7001/auth/google/callback'
-    // callbackURL: 'http://127.0.0.1:7001/auth/google/callback'
-};
-var QQ_OAUTH_OPTS = {
-    //authorizationURL: 'https://graph.z.qq.com/moc2/authorize',
-    //tokenURL: 'https://graph.z.qq.com/moc2/token',
-    clientID: "101208573",
-    clientSecret: "b55bb019cfbcf5529d183e0e3ad5b4dc",
-    callbackURL: "http://app.leoplay.com/stk/qq-auth-callback.php"
-};
-
 /**
  * Guess session id from HTTP request
  * @param request {*} HTTP request
@@ -223,7 +208,7 @@ AuthService.prototype.loginUser = function (provider, openId, account) {
  * Determine if a session has admin privilege.
  * @param sid {String} Session ID
  * @param assertive {boolean=} true to throw exception if has no admin role
- * @return {promise<boolean>} the value is always true if assertive==true
+ * @return {Q<boolean>} the value is always true if assertive==true
  */
 AuthService.prototype.hasAdminRole = function (sid, assertive) {
     var d = Q.defer();
@@ -320,7 +305,16 @@ AuthService.prototype.findAccountBySession = function (sid, assertive) {
     return d.promise;
 };
 
-function initRoutes(server) {
+/**
+ *
+ * @param server {*}
+ * @param oauth {*} OAuth information
+ * @param oauth.google.admins {[string]} - Open IDs for administrators
+ * @param oauth.google.clientID {string}
+ * @param oauth.google.clientSecret {string}
+ * @param oauth.google.callbackUrl {string}
+ */
+function initRoutes(server, oauth) {
     setupInterceptor(server);
     server.get("/api/1.0/my/profile",
         function _getMyProfile(req, res, next) {
@@ -339,6 +333,7 @@ function initRoutes(server) {
                 next();
             });
         });
+
     server.del("/api/1.0/admin/accounts/:uid",
         function _deleteAccount(req, res, next) {
             var uid = req.params.uid;
@@ -409,12 +404,23 @@ function initRoutes(server) {
                 })(req, res, next);
         });
 
-        passport.use(new GoogleStrategy(GOOGLE_OAUTH_OPTS,
+        var provider = oauth['google'];
+        passport.use(new GoogleStrategy({
+                //https://accounts.google.com/o/oauth2/auth?response_type=code&redirect_uri=http%3A%2F%2F127.0.0.1%3A7001%2Fapi%2F1.0%2Fauth%2Fgoogle%2Fcallback&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fplus.login&client_id=1020689494201-09gcvfq63pqs61uq6sjdugce6ot05ftb.apps.googleusercontent.com
+                clientID: provider.clientID,
+                clientSecret: provider.clientSecret,
+                callbackURL: provider.callbackURL
+            },
             function (accessToken, refreshToken, profile, done) {
                 return _processPassport(accessToken, refreshToken, profile, done);
             }
         ));
-        passport.use(new QqStrategy(QQ_OAUTH_OPTS,
+        provider = oauth['qq'];
+        passport.use(new QqStrategy({
+                clientID: provider.clientID,
+                clientSecret: provider.clientSecret,
+                callbackURL: provider.callbackURL
+            },
             function (accessToken, refreshToken, profile, done) {
                 return _processPassport(accessToken, refreshToken, profile, done);
             }
@@ -482,9 +488,12 @@ function initRoutes(server) {
         //logger.debug(server,"setupInterceptor");
         server.use(function (req, res, next) {
             var url = req.url;
-            if (url.indexOf("/api/1.0/admin") >= 0) {
-                authService.hasAdminRole(guessSessionId(req), true).then(function (isAdmin) {
-                    next();
+            if (url.indexOf("/api/1.0/admin") >= 0 || url.indexOf('/api/admin') == 0) {
+                authService.hasAdminRole(guessSessionId(req), false).then(function (isAdmin) {
+                    if (isAdmin)
+                        next();
+                    else
+                        res.send(new errors.UnauthorizedError('Resource only accessible by administrator'));
                 }).catch(function (err) {
                     return res.send(err);
                 });
