@@ -1,7 +1,7 @@
-lons: Leo's Opinionated NodeJs Scaffolding
+Leo's Opinionated Code Snippets
 
-locs: Leo's Opinionated Code Snippets - 20160613
+A collection for personal code snippets, not intended for public reuse.
 
 
-browser: used for browser
-nodejs: used for nodejs application
+- browser: used for browser
+- nodejs: used for nodejs application
