@@ -1,7 +1,7 @@
 Leo's Opinionated Code Snippets
 
-A collection for personal code snippets, not intended for public reuse.
+A collection of personal code snippets, not intended for public reuse.
 
 
-- browser: used for browser
-- nodejs: used for nodejs application
+- browser: js, css for browser
+- nodejs: js for nodejs application

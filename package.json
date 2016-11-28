@@ -1,8 +1,12 @@
 {
-  "name": "lons",
-  "version": "0.1.1",
+  "name": "locs_",
+  "version": "0.0.1",
   "description": "Leo's Opinionated Code Snippets",
   "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/leoliaolei/locs_.git"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
