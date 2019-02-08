@@ -405,26 +405,30 @@ function initRoutes(server, oauth) {
         });
 
         var provider = oauth['google'];
-        passport.use(new GoogleStrategy({
-                //https://accounts.google.com/o/oauth2/auth?response_type=code&redirect_uri=http%3A%2F%2F127.0.0.1%3A7001%2Fapi%2F1.0%2Fauth%2Fgoogle%2Fcallback&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fplus.login&client_id=1020689494201-09gcvfq63pqs61uq6sjdugce6ot05ftb.apps.googleusercontent.com
-                clientID: provider.clientID,
-                clientSecret: provider.clientSecret,
-                callbackURL: provider.callbackURL
-            },
-            function (accessToken, refreshToken, profile, done) {
-                return _processPassport(accessToken, refreshToken, profile, done);
-            }
-        ));
+        if (provider) {
+            passport.use(new GoogleStrategy({
+                    //https://accounts.google.com/o/oauth2/auth?response_type=code&redirect_uri=http%3A%2F%2F127.0.0.1%3A7001%2Fapi%2F1.0%2Fauth%2Fgoogle%2Fcallback&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fplus.login&client_id=1020689494201-09gcvfq63pqs61uq6sjdugce6ot05ftb.apps.googleusercontent.com
+                    clientID: provider.clientID,
+                    clientSecret: provider.clientSecret,
+                    callbackURL: provider.callbackURL
+                },
+                function (accessToken, refreshToken, profile, done) {
+                    return _processPassport(accessToken, refreshToken, profile, done);
+                }
+            ));
+        }
         provider = oauth['qq'];
-        passport.use(new QqStrategy({
-                clientID: provider.clientID,
-                clientSecret: provider.clientSecret,
-                callbackURL: provider.callbackURL
-            },
-            function (accessToken, refreshToken, profile, done) {
-                return _processPassport(accessToken, refreshToken, profile, done);
-            }
-        ));
+        if (provider) {
+            passport.use(new QqStrategy({
+                    clientID: provider.clientID,
+                    clientSecret: provider.clientSecret,
+                    callbackURL: provider.callbackURL
+                },
+                function (accessToken, refreshToken, profile, done) {
+                    return _processPassport(accessToken, refreshToken, profile, done);
+                }
+            ));
+        }
 
 
         /**
