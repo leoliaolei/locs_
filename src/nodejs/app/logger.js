@@ -7,7 +7,6 @@
 
 var bunyan = require('bunyan');
 
-
 /**
  * Create main logger
  * @param logName {String} Name of logger

@@ -4,6 +4,6 @@
 
 module.exports = {
     app: require('./src/nodejs/app/index'),
-    // scs: require('./src/njs-scs/index'),
+    scs: require('./src/nodejs/data/index'),
     user: require('./src/nodejs/user/account')
 };

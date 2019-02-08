@@ -2,18 +2,8 @@
 
 var restify = require('restify');
 var bunyan = require('bunyan');
-var errors = require('restify-errors');
 
-var HttpError = errors.HttpError;
-var corsMiddleware = require('restify-cors-middleware');
-
-const cors = corsMiddleware({
-    preflightMaxAge: 5, //Optional
-    origins: ['*', 'http://api.myapp.com', 'http://web.myapp.com'],
-    allowHeaders: ['API-Token'],
-    exposeHeaders: ['API-Token-Expiry']
-});
-
+var HttpError = restify.errors.HttpError;
 
 /**
  * Start server
@@ -33,15 +23,22 @@ function startServer(appName, port, logger) {
     if (!port) {
         throw new TypeError("Require parameter port in startServer(appName,port,logger)");
     }
+    restify.CORS.ALLOW_HEADERS.push('x-requested-with');
+    restify.CORS.ALLOW_HEADERS.push('authorization');
     server = restify.createServer({name: appName, log: logger});
     server.listen(port, function () {
         logger.info('Server started %s', server.url);
     });
-    server.pre(cors.preflight);
-    server.use(cors.actual);
-    server.use(restify.plugins.acceptParser(server.acceptable));
-    server.use(restify.plugins.queryParser({mapParams: true}));
-    server.use(restify.plugins.bodyParser({mapParams: true}));
+
+    server.use(restify.CORS());
+    server.use(restify.fullResponse());
+    server.use(restify.queryParser());
+    server.use(restify.bodyParser({mapParams: true}));
+    server.use(restify.requestLogger());
+    server.on('after', auditLogger({
+        body: false,
+        log: logger
+    }));
 
     _initCommonRoutes(server);
     _initErrorHandler(server);
@@ -56,7 +53,7 @@ function startServer(appName, port, logger) {
      */
     function _initCommonRoutes(server) {
         server.get("/_status", function _getServerStatus(req, res, next) {
-            res.send({status: "OK", info:server.getDebugInfo()});
+            res.send({status: "OK"});
         });
         /**
          * List all registered routes
