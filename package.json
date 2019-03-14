@@ -1,6 +1,6 @@
 {
   "name": "locs",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Leo's Opinionated Code Snippets",
   "main": "index.js",
   "repository": {

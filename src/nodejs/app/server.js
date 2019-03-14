@@ -10,10 +10,13 @@ var HttpError = restify.errors.HttpError;
  * @param appName {String} application name
  * @param port {Number}
  * @param logger {*} bunyan logger
+ * @param {object=} options
+ * @param {boolean=} options.auditLogger
  * @returns {*} server
  */
-function startServer(appName, port, logger) {
+function startServer(appName, port, logger, options) {
     var server;
+    options = options || {};
     if (!appName) {
         throw new TypeError("Require parameter appName in startServer(appName,port,logger)");
     }
@@ -35,10 +38,12 @@ function startServer(appName, port, logger) {
     server.use(restify.queryParser());
     server.use(restify.bodyParser({mapParams: true}));
     server.use(restify.requestLogger());
-    server.on('after', auditLogger({
-        body: false,
-        log: logger
-    }));
+    if (options.auditLogger) {
+        server.on('after', auditLogger({
+            body: false,
+            log: logger
+        }));
+    }
 
     _initCommonRoutes(server);
     _initErrorHandler(server);
