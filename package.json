@@ -12,7 +12,7 @@
   },
   "author": "",
   "dependencies": {
-    "restify": "^4.0.4"
+    "restify": "^8.1.0"
   },
   "license": "ISC"
 }
